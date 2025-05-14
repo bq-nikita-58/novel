@@ -32,11 +32,11 @@ const hljs = require("highlight.js");
 
 const extensions = [...defaultExtensions, slashCommand];
 
-const TailwindAdvancedEditor = () => {
+const TailwindAdvancedEditor = ({ editorId }: { editorId: string }) => {
   const [initialContent, setInitialContent] = useState<null | JSONContent>(null);
   const [saveStatus, setSaveStatus] = useState("Saved");
-  const [charsCount, setCharsCount] = useState();
-
+  const [contentKey, setContentKey] = useState(0);
+  const [wordCount, setWordCount] = useState(0); 
   const [openNode, setOpenNode] = useState(false);
   const [openColor, setOpenColor] = useState(false);
   const [openLink, setOpenLink] = useState(false);
@@ -53,33 +53,59 @@ const TailwindAdvancedEditor = () => {
     return new XMLSerializer().serializeToString(doc);
   };
 
-  const debouncedUpdates = useDebouncedCallback(async (editor: EditorInstance) => {
-    const json = editor.getJSON();
-    setCharsCount(editor.storage.characterCount.words());
-    window.localStorage.setItem("html-content", highlightCodeblocks(editor.getHTML()));
-    window.localStorage.setItem("novel-content", JSON.stringify(json));
-    window.localStorage.setItem("markdown", editor.storage.markdown.getMarkdown());
-    setSaveStatus("Saved");
-  }, 500);
+  // Calculate count from editor content
+  const updateCounts = (editor: EditorInstance) => {
+    const text = editor.getText();
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    setWordCount(words);
+  };
 
   useEffect(() => {
-    const content = window.localStorage.getItem("novel-content");
-    if (content) setInitialContent(JSON.parse(content));
-    else setInitialContent(defaultEditorContent);
-  }, []);
+    const content = localStorage.getItem(editorId);
+    if (content) {
+      const parsedContent = JSON.parse(content);
+      console.log("[Before setInitialContent] Parsed content from localStorage:", parsedContent, editorId);
+      setInitialContent(parsedContent.json);
+    } else {
+      console.log("[Before setInitialContent] No content found. Using default content.");
+      setInitialContent(defaultEditorContent);
+    }
+    setContentKey(prev => prev + 1);
+  }, [editorId]);
 
-  if (!initialContent) return null;
+  useEffect(() => {
+    if (initialContent !== null) {
+      console.log("[After setInitialContent] State updated initialContent:", initialContent, editorId);
+      setContentKey(prev => prev + 1);
+    }
+  }, [initialContent]);
+
+  const debouncedUpdates = useDebouncedCallback((editor: EditorInstance) => {
+    const json = editor.getJSON();
+    const html = editor.getHTML();
+    const markdown = editor.storage.markdown.getMarkdown();
+
+    const contentToSave = { json, html, markdown };
+    localStorage.setItem(editorId, JSON.stringify(contentToSave));
+    setSaveStatus("Saved");
+    updateCounts(editor); 
+  }, 500);
+
+  if (!initialContent) return <div>Loading editor...</div>;
 
   return (
     <div className="relative w-full max-w-screen-lg">
       <div className="flex absolute right-5 top-5 z-10 mb-5 gap-2">
-        <div className="rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground">{saveStatus}</div>
-        <div className={charsCount ? "rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground" : "hidden"}>
-          {charsCount} Words
+        <div className="rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground">
+          {saveStatus}
+        </div>
+        <div className="rounded-lg bg-accent px-2 py-1 text-sm text-muted-foreground">
+          {wordCount} words
         </div>
       </div>
-      <EditorRoot>
+      <EditorRoot key={editorId}>
         <EditorContent
+          key={`${editorId}-${contentKey}`}
           initialContent={initialContent}
           extensions={extensions}
           className="relative min-h-[500px] w-full max-w-screen-lg border-muted bg-background sm:mb-[calc(20vh)] sm:rounded-lg sm:border sm:shadow-lg"
@@ -90,13 +116,16 @@ const TailwindAdvancedEditor = () => {
             handlePaste: (view, event) => handleImagePaste(view, event, uploadFn),
             handleDrop: (view, event, _slice, moved) => handleImageDrop(view, event, moved, uploadFn),
             attributes: {
-              class:
-                "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full",
+              class: "prose prose-lg dark:prose-invert prose-headings:font-title font-default focus:outline-none max-w-full",
             },
           }}
           onUpdate={({ editor }) => {
             debouncedUpdates(editor);
             setSaveStatus("Unsaved");
+            updateCounts(editor); 
+          }}
+          onCreate={({ editor }) => {
+            updateCounts(editor); 
           }}
           slotAfter={<ImageResizer />}
         >
@@ -126,7 +155,6 @@ const TailwindAdvancedEditor = () => {
             <Separator orientation="vertical" />
             <NodeSelector open={openNode} onOpenChange={setOpenNode} />
             <Separator orientation="vertical" />
-
             <LinkSelector open={openLink} onOpenChange={setOpenLink} />
             <Separator orientation="vertical" />
             <MathSelector />

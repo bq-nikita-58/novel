@@ -34,8 +34,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <Providers>{children}</Providers>
-      </body>
+      <Providers>
+          <div className="flex min-h-screen">
+            <main className="ml-64 w-full min-h-screen bg-background">
+              {children}
+            </main>
+          </div>
+        </Providers>
+              </body>
     </html>
   );
 }
